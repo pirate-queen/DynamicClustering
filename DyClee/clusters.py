@@ -1,5 +1,11 @@
 import numpy as np
 
+# Citation:
+# Nathalie Barbosa Roa, Louise Travé-Massuyès, Victor Hugo Grisales.
+# DyClee: Dynamic clustering for tracking evolving environments.
+# Pattern Recognition, Elsevier, 2019, 94, pp.162-186.
+# 10.1016/j.patcog.2019.05.024 . hal-02135580
+
 # Implements the mu-cluster or micro-cluster as described in the 2019 DyClee
 # paper.
 class MicroCluster:
@@ -24,9 +30,10 @@ class MicroCluster:
 		self.center = X
 		self.variance = np.zeros(X.shape, dtype=np.float64)
 		self.density_type = None
+		self.was_dense = False
 
 		# Function for forgetting process
-		self.decay_function = lambda : 1 if decay_function is None else \
+		self.decay_function = lambda t, t2 : 1 if decay_function is None else \
 			decay_function
 
 	# Method to update MicroCluster with new instance X
