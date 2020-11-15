@@ -43,8 +43,8 @@ class SerialDyClee:
 		self.forget_method = forget_method
 		self.ltm = ltm
 		self.context = context
-		self.norm_func = self._adaptive_normalize if context is None else \
-			self._normalize
+		self.norm_func = self._adaptive_normalize_and_update if context \
+			is None else self._normalize
 		self.t_global = t_global
 		self.uncdim = uncdim
 
@@ -112,6 +112,13 @@ class SerialDyClee:
 
 	# Implements algorithm 2, density stage.
 	def _density_stage(self, ):
+		pass
+
+	# Runs the DyClee algorithm on a set part of a finite dataset.
+	# NOT PART OF THE ORIGINAL DYCLEE ALGORITHM. Designed to avoid running the
+	# density stage before reasonable mins and maxs have been observed.
+	# @param iterations		The number of instances to process.
+	def warm_start(self, iterations):
 		pass
 
 
