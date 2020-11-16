@@ -29,23 +29,54 @@ class MicroCluster:
 		# Calculated statistics
 		self.center = X
 		self.variance = np.zeros(X.shape, dtype=np.float64)
-		self.density_type = None
+		self.density_type = "Outlier"
 		self.was_dense = False
 
 		# Function for forgetting process
 		self.decay_function = lambda t, t2 : 1 if decay_function is None else \
 			decay_function
 
+
+	# Helper function to calculate center based on feature vector
+	def get_center(self):
+		return self.LSk / self.nk
+
+
+	# Helper function to calculate variance based on feature vector
+	def get_variance(self):
+		return (self.SSk / self.nk) - np.power((self.LSk / self.nk), 2)
+
+
 	# Method to update MicroCluster with new instance X
 	# Parameter descriptions can be found in __init__ comments.
 	def insert(self, X, tX, X_class=None):
-		pass
+		self.nk += 1 # Sample count
+		self.LSk += X # Linear sum
+		self.SSk += np.power(X,2) # Squared sum
+		self.tlk = tX # Update last assignment time
+		self.center = self.get_center()
+		self.variance = self.get_variance()
+		self.Classk = X_class # Update class
+
+
+	# Method for all MicroClusters to be updated upon time increment
+	# @param tX		Current time.
+	def update_cluster(self, tX):
+		decay_factor = self.decay_function(tX, self.tlk)
+		self.nk = (self.nk * decay_factor)
+		self.LSk = (self.LSk * decay_factor)
+		self.SSk = (self.SSk * decay_factor)
+
 
 	# Method to update density upon hyperbox volume change, as in adaptive
 	# normalization.
+	# @param V		Current hyperbox volume.
 	def update_density(self, V):
 		self.Dk = self.nk / V
+
 
 	# Setter for density_type
 	def set_density_type(self, density_type):
 		self.density_type = density_type
+		if not self.was_dense and density_type == "Dense":
+			self.was_dense = True
