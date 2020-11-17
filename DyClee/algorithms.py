@@ -21,7 +21,7 @@ class SerialDyClee:
 	#							discard (True) clusters with few microclusters.
 	# @param multi_density		Boolean to apply global density (True) or local
 	#							density (False) analysis.
-	# @param context			A 2xd matrix where d is the number of
+	# @param context			A 2xd NumPy matrix where d is the number of
 	#							dimensions, containing the minimum (row 0) and
 	#							maximum (row 1) value of each dimension.
 	#							Passing the default value of None will activate
@@ -87,7 +87,9 @@ class SerialDyClee:
 	# Helper function to determine if a microcluster is reachable from new
 	# instance X.
 	def _is_reachable(self, microcluster, X):
-		pass
+		diff = np.abs(X - microcluster.center)
+		halvedsize = self.hyperbox_sizes / 2
+		return np.all(diff < halvedsize)
 
 
 	# Helper function to determine if two microclusters are connected.
