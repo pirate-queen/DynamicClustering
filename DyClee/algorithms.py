@@ -1,4 +1,9 @@
+from copy import deepcopy
+
 import numpy as np
+
+from clusters import MicroCluster
+from utilities import manhattan_distance
 
 # Citation:
 # Nathalie Barbosa Roa, Louise Travé-Massuyès, Victor Hugo Grisales.
@@ -92,6 +97,11 @@ class SerialDyClee:
 		return np.all(diff < halvedsize)
 
 
+	# Helper function to find all reachable microclusters in a given list
+	def _find_reachables(self, curr_list, X):
+		return [uC for uC in curr_list if self._is_reachable(uC, X)]
+
+
 	# Helper function to determine if two microclusters are connected.
 	def _is_connected(self, microclusterA, microclusterB):
 		pass
@@ -107,9 +117,56 @@ class SerialDyClee:
 		pass
 
 
-	# Implements algorithm 1, distance stage.
-	def _distance_stage(self, ):
-		pass
+	# Helper function for finding the best neighbor microcluster for insertion
+	# in a list of microclusters by distance, breaking ties based on density.
+	def _find_best_neighbor(self, neighbor_list, X):
+		closest = []
+		min_dist = np.inf
+
+		for uC in neighbor_list:
+			dist = manhattan_distance(uC.center, X)
+			if dist < min_dist:
+				closest = [uC]
+			elif dist == min_dist: # Ties
+				closest.append(uC)
+
+		# Sort by density to break ties among equally close
+		# microclusters
+		closest.sort(key = lambda uC : uC.Dk)
+		return closest[0]
+
+	# Implements algorithm 1, distance stage (page 6).
+	def _distance_stage(self, X, tX, X_class=None):
+		# No microclusters ever created
+		if len(self.A_list) == 0 and len(self.O_list) == 0 and \
+			len(self.long_term_mem) == 0:
+			# If doing adaptive normalization, cannot expect valid density
+			# after only one insertion.
+			volume = self.hyperbox_volume if self.hyperbox_volume is not None \
+				else 1
+			self.O_list.append(MicroCluster(X, tX, volume, X_class,
+				self.forget_method))
+		else: # First check A-list
+			Reachables = self._find_reachables(self.A_list, X)
+			if len(Reachables) != 0: # If there are reachable microclusters
+				best_match = self._find_best_neighbor(Reachables, X)
+				best_match.insert(X, tX, X_class)
+			else: # Then check O-list
+				Reachables = self._find_reachables(self.O_list, X)
+				if len(Reachables) != 0: # If there are reachable microclusters
+					# Find closest uC in Reachables
+					best_match = self._find_best_neighbor(Reachables, X)
+					best_match.insert(X, tX, X_class)
+				else: # Check long term memory
+					Reachables = self._find_reachables(self.long_term_mem, X)
+					if self.ltm and len(Reachables) != 0:
+						best_match = self._find_best_neighbor(Reachables, X)
+						resurrected = deepcopy(best_match)
+						resurrected.insert(X, tX, X_class)
+						self.O_list.append(resurrected)
+					else: # Create uC with X info
+						self.O_list.append(MicroCluster(X, tX, volume, X_class,
+							self.forget_method))
 
 
 	# Implements algorithm 2, density stage.
@@ -125,7 +182,13 @@ class SerialDyClee:
 
 
 	# Runs the DyClee algorithm on a finite dataset.
-	def run_dataset(self, ):
+	# @param data		Data matrix where each row is an instance, each
+	#					column is for an attribute.
+	# @param timecol	Time increments of the data if available; default of 
+	#					None disables time behavior. Forget_method should also
+	#					be None.
+	# @param targetcol	Column of labels.
+	def run_dataset(self, data, timecol=None, targetcol=None):
 		pass
 
 
