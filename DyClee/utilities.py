@@ -30,6 +30,7 @@ def trapezoidal_decay(tw_zero, m, ta):
 			return (m-t)/(m-ta)
 		elif t-tlk <= ta:
 			return 1
+	return td
 
 
 def zshape_decay(ta, tw_zero):
@@ -42,20 +43,24 @@ def zshape_decay(ta, tw_zero):
 			return 2*(t-ta)/(tw_zero-ta)
 		elif t-tlk > tw_zero:
 			return 0
+	return zsd
 
 
 def exponential_decay(lam):
 	def ed(t, tlk):
 		return np.power(np.e, -lam*(t-tlk))
+	return ed
 
 def halflife_decay(B, lam):
 	def hld(t, tlk):
 		return np.power(B, -lam*(t-tlk))
+	return hld
 
 
 def sigmoidal_decay(a, c):
 	def sd(t, tlk):
 		return 1/(1+np.power(np.e, -a*(t-c))
+	return sd
 
 # Distance
 
