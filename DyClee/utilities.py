@@ -21,27 +21,30 @@ def linear_decay(tw_zero, m):
 			return 1-m*(t-tlk)
 	return ld
 
+
 # ta = no forgetting time
 def trapezoidal_decay(tw_zero, m, ta):
 	def td(t, tlk):
-		if t - tlk > tw_zero:
+		diff = t - tlk
+		if diff > tw_zero:
 			return 0
-		elif t-tlk <= tw_zero and ta <= t-tlk:
+		elif diff <= tw_zero and ta <= diff:
 			return (m-t)/(m-ta)
-		elif t-tlk <= ta:
+		elif diff <= ta:
 			return 1
 	return td
 
 
 def zshape_decay(ta, tw_zero):
 	def zsd(t, tlk):
+		diff = t - tlk
 		if t <= ta:
 			return 1
-		elif ta <= t-tlk and t-tlk <= (ta+tw_zero)/2:
+		elif ta <= diff and diff <= (ta+tw_zero)/2:
 			return 1-2*(t-ta)/(tw_zero-ta)
-		elif (ta+tw_zero)/2 <= t-tlk and t-tlk <= tw_zero:
-			return 2*(t-ta)/(tw_zero-ta)
-		elif t-tlk > tw_zero:
+		elif (ta+tw_zero)/2 <= diff and diff <= tw_zero:
+			return 2*(t-tw_zero)/(tw_zero-ta)
+		elif diff > tw_zero:
 			return 0
 	return zsd
 
@@ -51,6 +54,7 @@ def exponential_decay(lam):
 		return np.power(np.e, -lam*(t-tlk))
 	return ed
 
+
 def halflife_decay(B, lam):
 	def hld(t, tlk):
 		return np.power(B, -lam*(t-tlk))
@@ -59,8 +63,9 @@ def halflife_decay(B, lam):
 
 def sigmoidal_decay(a, c):
 	def sd(t, tlk):
-		return 1/(1+np.power(np.e, -a*(t-c))
+		return 1/(1+np.power(np.e, -a*(t-c)))
 	return sd
+
 
 # Distance
 
