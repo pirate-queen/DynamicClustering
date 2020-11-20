@@ -47,11 +47,19 @@ class SerialDyClee:
 		self.phi = phi
 		self.forget_method = forget_method
 		self.ltm = ltm
-		self.context = context
-		self.norm_func = self._adaptive_normalize_and_update if context \
-			is None else self._normalize
+
+		if context is None:
+			self.context = None
+			self.norm_func = self._adaptive_normalize_and_update
+		else: # Append max-min row for reduced calculations
+			self.context = np.append(context, (context[1] - context[0]),
+				axis=0)
+			self.norm_func = self._normalize
+
 		self.t_global = t_global
 		self.uncdim = uncdim
+		self.common_dims = context.shape[1] - uncdim if context is not None \
+			else None # d - uncdim
 
 		# Storage
 		self.A_list = [] # Active medium and high density microclusters
@@ -69,7 +77,7 @@ class SerialDyClee:
 	# Helper to calculate microcluster hyperbox sizes along each dimension.
 	# Size = phi * |dmax - dmin|
 	def _get_hyperbox_sizes(self):
-		return self.phi * np.abs(self.context[1] - self.context[0])
+		return self.phi * np.abs(self.context[2])
 
 
 	# Helper to calculate the current microcluster hyperbox volume.
@@ -81,12 +89,32 @@ class SerialDyClee:
 	# Normalization function for use in cases of no context matrix provided;
 	# also, must update the hypervolumes of all microclusters.
 	def _adaptive_normalize_and_update(self, X):
-		pass
+		diffmin = X - self.context[0]
+		diffmax = X - self.context[1]
+		diffminbool = diffmin < 0
+		diffmaxbool = diffmax > 0
+		updatemins = np.any(diffminbool)
+		updatemaxs = np.any(diffmaxbool)
+		if updatemins:
+			self.context[0] = self.context[0] + np.where(diffminbool,
+				diffmin, 0)
+		if updatemaxs:
+			self.context[1] = self.context[1] + np.where(diffmaxbool,
+				diffmax, 0)
 
+		# Update differences
+		self.context[2] = self.context[1] - self.context[0]
+
+		# Update hyperbox statistics
+		self.hyperbox_sizes = self._get_hyperbox_sizes()
+		self.hyperbox_volume = self._get_hyperbox_volume()
+
+		# Need to re-normalize all existing microclusters and return normalized
+		# point
 
 	# Normalization function for use in case of passed context matrix.
 	def _normalize(self, X):
-		pass
+		return ((X - self.context[0])/(self.context[2]))
 
 
 	# Helper function to determine if a microcluster is reachable from new
@@ -103,8 +131,17 @@ class SerialDyClee:
 
 
 	# Helper function to determine if two microclusters are connected.
+	# Implements definition 3.2 (page 7) - doesn't insist on a particular
+	# subset of features, only that a subset could be created to satisfy
+	# overlap among (d - uncdim) dimensions.
 	def _is_connected(self, microclusterA, microclusterB):
-		pass
+		diff = np.abs(microclusterA.center - microclusterB.center)
+		halvedsize = self.hyperbox_sizes / 2
+		numoverlapdims = np.sum((diff < halvedsize).astype(np.uint8))
+		if numoverlapdims >= self.common_dims: # Check for sufficient overlap
+			return True
+		else:
+			return False
 
 
 	# Helper function to find all neighbors in the density stage.
@@ -189,9 +226,11 @@ class SerialDyClee:
 	#					be None.
 	# @param targetcol	Column of labels.
 	def run_dataset(self, data, timecol=None, targetcol=None):
+		# MUST INITIALIZE self.common_dims and self.context
 		pass
 
 
 	# Runs the DyClee algorithm on streaming data.
 	def run_datastream(self, ):
+		# MUST INITIALIZE self.common_dims and self.context
 		pass
