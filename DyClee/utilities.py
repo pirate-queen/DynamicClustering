@@ -15,10 +15,11 @@ import numpy as np
 # m = function slope
 def linear_decay(tw_zero, m):
 	def ld(t, tlk):
-		if t - tlk > tw_zero:
+		diff = t - tlk
+		if diff > tw_zero:
 			return 0
 		else:
-			return 1-m*(t-tlk)
+			return 1-m*(diff)
 	return ld
 
 
