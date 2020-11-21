@@ -36,9 +36,11 @@ class SerialDyClee:
 	# @param uncdim				Integer specifying the number of dimensions
 	#							along which microclusters do not have to
 	#							overlap to be considered connected.
+	# @param kdtree				Set to True to enable faster connected
+	#							micro-cluster search via use of a k-d tree.
 	def __init__(self, phi, forget_method=None, ltm=False,
 		unclass_accepted=True, minimum_mc=False, multi_density=False,
-		context=None, t_global=1, uncdim=0):
+		context=None, t_global=1, uncdim=0, kdtree=False):
 		assert phi >= 0 and phi <= 1, "Invalid phi given"
 		if phi > 0.5:
 			print("Warning: relative size (phi) > 0.5 may yield poor results")
@@ -47,6 +49,8 @@ class SerialDyClee:
 		self.phi = phi
 		self.forget_method = forget_method
 		self.ltm = ltm
+		self.density_stage = self._density_stage_local if multi_density else \
+			self._density_stage_global
 
 		if context is None:
 			self.context = None
@@ -60,6 +64,8 @@ class SerialDyClee:
 		self.uncdim = uncdim
 		self.common_dims = context.shape[1] - uncdim if context is not None \
 			else None # d - uncdim
+		self.spatial_search = self._search_kdtree if kdtree else \
+			self._search_all_clusters
 
 		# Storage
 		self.A_list = [] # Active medium and high density microclusters
@@ -85,6 +91,10 @@ class SerialDyClee:
 	def _get_hyperbox_volume(self):
 		return np.prod(self._get_hyperbox_sizes)
 
+	def _get_next_class_id(self):
+		temp = self.next_class_id
+		self.next_class_id += 1
+		return temp
 
 	# Normalization function for use in cases of no context matrix provided;
 	# also, must update the hypervolumes of all microclusters.
@@ -144,8 +154,15 @@ class SerialDyClee:
 			return False
 
 
-	# Helper function to find all neighbors in the density stage.
-	def _search_kdtree(self, ):
+	# Helper function to find all neighbors in the density stage by searching
+	# all clusters.
+	def _search_all_clusters(self, curruC, clist):
+		return [uC for uC in clist if self._is_connected(uC, curruC)]
+
+
+	# Helper function to find all neighbors in the density stage by using a
+	# kdtree.
+	def _search_kdtree(self, curruC, clist):
 		pass
 
 
@@ -205,10 +222,51 @@ class SerialDyClee:
 						self.O_list.append(MicroCluster(X, tX, volume, X_class,
 							self.forget_method))
 
+	# Returns average and median density of given list of clusters.
+	def _get_avg_med_density(self, clist):
+		cla = np.array([uC.Dk for uC in clist], dtype=np.float64)
+		return np.mean(cla), np.median(cla)
 
-	# Implements algorithm 2, density stage.
-	def _density_stage(self, ):
+
+	# Implements local density analysis stage.
+	def _density_stage_local(self, ):
 		pass
+
+
+	# Implements algorithm 2, density stage - global analysis.
+	# Returns updated A-list and O-list
+	def _density_stage_global(self):
+		allclusters = self.A_list + self.O_list # Flatten cluster lists
+		g_avg, g_med = self._get_avg_med_density(allclusters)
+		DMC = {uC for uC in allclusters if uC.Dk > g_avg and uC.Dk > g_med}
+		already_seen = set()
+		for uC in DMC:
+			if uC not in already_seen:
+				already_seen.add(uC)
+				if uC.Classk == 'Unclassed':
+					label = self._get_next_class_id()
+					uC.Classk = label
+			Connected_uC = self.spatial_search(uC,
+				list(DMC.difference(already_seen))) # Connected AND dense
+			for uCneighbor in Connected_uC:
+				uCneighbor.Classk = label
+				already_seen.add(uCneighbor)
+				NewConnected_uC = self.spatial_search(uCneighbor,
+					list(DMC.difference(already_seen)))
+				for newneighbor in NewConnected_uC:
+					Connected_uC.append(newneighbor)
+					newneighbor.Classk = label
+
+		## NEED TO INSERT LOGIC FOR FINAL CLUSTERING (INCLUDING MINIMUM_MC
+		## LOGIC), SNAPSHOTS AND FILTERING ALLCLUSTERS TO RETURN THE BELOW
+		## LISTS - ASSIGNING DENSITY TYPES AND ASSIGNING TO A-LIST OR O-LIST
+		## ACCORDINGLY, "DELETING" BY NOT INCLUDING IN THE RETURNED LISTS IF A
+		## uC DOES NOT MEET THE LOW-DENSITY THRESHOLD OR MARKING FOR LONG-TERM
+		## MEMORY
+
+		## Need to return dense and semi-dense as A-list, outliers as O-list
+		return [], []
+
 
 	# Runs the DyClee algorithm on a set part of a finite dataset.
 	# NOT PART OF THE ORIGINAL DYCLEE ALGORITHM. Designed to avoid running the
