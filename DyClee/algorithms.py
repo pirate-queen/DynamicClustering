@@ -1,4 +1,5 @@
 from copy import deepcopy
+from itertools import chain
 
 import numpy as np
 
@@ -70,6 +71,7 @@ class SerialDyClee:
 		# Storage
 		self.A_list = [] # Active medium and high density microclusters
 		self.O_list = [] # Low density microclusters
+		self.all_clusters = [self.A_list, self.O_list]
 		self.long_term_mem = [] # All microclusters once dense, now low density
 		self.snapshots = {} # Need to define how this is maintained
 
@@ -236,9 +238,17 @@ class SerialDyClee:
 	# Implements algorithm 2, density stage - global analysis.
 	# Returns updated A-list and O-list
 	def _density_stage_global(self):
-		allclusters = self.A_list + self.O_list # Flatten cluster lists
-		g_avg, g_med = self._get_avg_med_density(allclusters)
-		DMC = {uC for uC in allclusters if uC.Dk > g_avg and uC.Dk > g_med}
+		g_avg, g_med = self._get_avg_med_density(chain(*self.all_clusters))
+		DMC = set()
+		# Assign density types:
+		for uC in chain(*self.all_clusters):
+			if uC.Dk > g_avg and uC.Dk > g_med:
+				uC.set_density_type("Dense")
+				DMC.add(uC)
+			elif uC.Dk > g_avg or uC.Dk > g_med:
+				uC.set_density_type("Semi-Dense")
+			else:
+				uC.set_density_type("Low-Density")
 		already_seen = set()
 		for uC in DMC:
 			if uC not in already_seen:
@@ -284,8 +294,42 @@ class SerialDyClee:
 	#					be None.
 	# @param targetcol	Column of labels.
 	def run_dataset(self, data, timecol=None, targetcol=None):
-		# MUST INITIALIZE self.common_dims and self.context
-		pass
+		num_instances, num_features = data.shape
+		if self.common_dims is None: # Initialize common dimensions
+			self.common_dims = num_features - self.uncdim
+		
+		if self.context is None: # Initialize context matrix
+			self.context = np.zeros((3, num_features), dtype=np.float64)
+
+		if timecol is None: # Not time-series data
+			timecol = np.arange(num_instances)
+
+		if targetcol is None: # Unsupervised
+			targetcol = np.array(["Unclassed"] * num_instances)
+
+		# Primary loop
+		count_since_last_density = 0
+		for i in range(num_instances):
+			hyperboxsizes = self.hyperbox_sizes
+			X = self.norm_func(data[i]) # Normalize data
+			tX = timecol[i]
+			X_class = targetcol[i]
+			self._distance_stage(X, tX, X_class) # Run distance stage
+
+			# Decay all microclusters
+			for uC in chain(*self.all_clusters):
+				uC.update_cluster(tX)
+
+			# If necessary, update densities
+			if hyperboxsizes != self.hyperbox_sizes:
+				for uC in chain(*self.all_clusters):
+					uC.update_density(self.hyperbox_volume)
+
+			# Run density stage
+			count_since_last_density += 1
+			if count_since_last_density == self.t_global:
+				count_since_last_density = 0
+				self.density_stage()
 
 
 	# Runs the DyClee algorithm on streaming data.
