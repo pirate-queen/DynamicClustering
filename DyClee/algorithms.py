@@ -1,5 +1,6 @@
 from copy import deepcopy
 from itertools import chain
+from collections import deque
 
 import numpy as np
 
@@ -50,6 +51,7 @@ class SerialDyClee:
 		self.phi = phi
 		self.forget_method = forget_method
 		self.ltm = ltm
+		self.unclass_accepted = unclass_accepted
 		self.density_stage = self._density_stage_local if multi_density else \
 			self._density_stage_global
 
@@ -71,7 +73,6 @@ class SerialDyClee:
 		# Storage
 		self.A_list = [] # Active medium and high density microclusters
 		self.O_list = [] # Low density microclusters
-		self.all_clusters = [self.A_list, self.O_list]
 		self.long_term_mem = [] # All microclusters once dense, now low density
 		self.snapshots = {} # Need to define how this is maintained
 
@@ -158,13 +159,14 @@ class SerialDyClee:
 
 	# Helper function to find all neighbors in the density stage by searching
 	# all clusters.
-	def _search_all_clusters(self, curruC, clist):
-		return [uC for uC in clist if self._is_connected(uC, curruC)]
+	def _search_all_clusters(self, curruC):
+		return [uC for uC in chain(self.A_list, self.O_list) if \
+			self._is_connected(uC, curruC)]
 
 
 	# Helper function to find all neighbors in the density stage by using a
 	# kdtree.
-	def _search_kdtree(self, curruC, clist):
+	def _search_kdtree(self, curruC):
 		pass
 
 
@@ -238,34 +240,56 @@ class SerialDyClee:
 	# Implements algorithm 2, density stage - global analysis.
 	# Returns updated A-list and O-list
 	def _density_stage_global(self):
-		g_avg, g_med = self._get_avg_med_density(chain(*self.all_clusters))
-		DMC = set()
+		g_avg, g_med = self._get_avg_med_density(chain(self.A_list,
+			self.O_list))
+		DMC = [] # Dense
+		SDMC = [] # Semi-Dense
+		LDMC = [] # Low-Density
 		# Assign density types:
-		for uC in chain(*self.all_clusters):
+		for uC in chain(chain(self.A_list, self.O_list)):
 			if uC.Dk > g_avg and uC.Dk > g_med:
 				uC.set_density_type("Dense")
-				DMC.add(uC)
+				DMC.append(uC)
 			elif uC.Dk > g_avg or uC.Dk > g_med:
 				uC.set_density_type("Semi-Dense")
+				SDMC.append(uC)
 			else:
 				uC.set_density_type("Low-Density")
+				LDMC.append(uC)
 		already_seen = set()
+		final_clusters = []
 		for uC in DMC:
 			if uC not in already_seen:
 				already_seen.add(uC)
+				## May need to change this to class assignment upon final
+				## cluster formation.
 				if uC.Classk == 'Unclassed':
 					label = self._get_next_class_id()
 					uC.Classk = label
-			Connected_uC = self.spatial_search(uC,
-				list(DMC.difference(already_seen))) # Connected AND dense
-			for uCneighbor in Connected_uC:
-				uCneighbor.Classk = label
-				already_seen.add(uCneighbor)
-				NewConnected_uC = self.spatial_search(uCneighbor,
-					list(DMC.difference(already_seen)))
-				for newneighbor in NewConnected_uC:
-					Connected_uC.append(newneighbor)
-					newneighbor.Classk = label
+				final_cluster = [copy.deepcopy(uC)] # Create "final cluster"
+				Connected_uC = deque(self.spatial_search(uC))
+				while len(Connected_uC) != 0:
+					uCneighbor = Connected_uC.popleft()
+					if uCneighbor.density_type == "Dense" and uCneighbor not \
+							in already_seen:
+						uCneighbor.Classk = label
+						already_seen.add(uCneighbor)
+						final_cluster.append(copy.deepcopy(uCneighbor))
+						NewConnected_uC = self.spatial_search(uCneighbor)
+						for newneighbor in NewConnected_uC:
+							if newneighbor.density_type == "Dense" and \
+									newneighbor not in already_seen:
+								Connected_uC.append(newneighbor)
+
+							newneighbor.Classk = label
+
+							if newneighbor.density_type == "Semi-Dense" and \
+									newneighbor not in already_seen:
+								final_cluster.append(copy.deepcopy(
+									newneighbor))
+								already_seen.add(newneighbor)
+				## NEED MINIMUM_MC DECISION LOGIC HERE
+				final_clusters.append(final_cluster)
 
 		## NEED TO INSERT LOGIC FOR FINAL CLUSTERING (INCLUDING MINIMUM_MC
 		## LOGIC), SNAPSHOTS AND FILTERING ALLCLUSTERS TO RETURN THE BELOW
@@ -273,9 +297,12 @@ class SerialDyClee:
 		## ACCORDINGLY, "DELETING" BY NOT INCLUDING IN THE RETURNED LISTS IF A
 		## uC DOES NOT MEET THE LOW-DENSITY THRESHOLD OR MARKING FOR LONG-TERM
 		## MEMORY
+		new_A_list = list(DMC) + SDMC
+		## NEED LOW DENSITY THRESHOLD LOGIC HERE
+		new_O_list = [uC for uC in LDMC if ]
 
 		## Need to return dense and semi-dense as A-list, outliers as O-list
-		return [], []
+		return new_A_list, new_O_list
 
 
 	# Runs the DyClee algorithm on a set part of a finite dataset.
@@ -292,7 +319,8 @@ class SerialDyClee:
 	# @param timecol	Time increments of the data if available; default of 
 	#					None disables time behavior. Forget_method should also
 	#					be None.
-	# @param targetcol	Column of labels.
+	# @param targetcol	Column of labels. Absence of a label MUST be indicated
+	#					with None in that row.
 	def run_dataset(self, data, timecol=None, targetcol=None):
 		num_instances, num_features = data.shape
 		if self.common_dims is None: # Initialize common dimensions
