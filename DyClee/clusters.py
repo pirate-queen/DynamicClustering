@@ -24,7 +24,7 @@ class MicroCluster:
 		self.SSk = np.power(X, 2)
 		self.tlk = self.tsk = tX
 		self.Dk = 1 / V
-		self.Classk = X_class
+		self.Classk = X_class if X_class is not None else "Unclassed"
 
 		# Calculated statistics
 		self.center = X
@@ -33,8 +33,10 @@ class MicroCluster:
 		self.was_dense = False
 
 		# Function for forgetting process
-		self.decay_function = lambda t, t2 : 1 if decay_function is None else \
-			decay_function
+		if decay_function is None:
+			self.decay_function = lambda t, t2 : 1
+		else:
+			self.decay_function = decay_function
 
 
 	# Helper function to calculate center based on feature vector
