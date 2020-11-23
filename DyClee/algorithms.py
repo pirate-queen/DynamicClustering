@@ -406,7 +406,7 @@ class SerialDyClee:
 				uC.update_cluster(tX)
 
 			# If necessary, update densities
-			if hyperboxsizes != self.hyperbox_sizes:
+			if hyperboxsizes.all() != self.hyperbox_sizes.all():
 				for uC in chain(self.A_list, self.O_list):
 					uC.update_density(self.hyperbox_volume)
 
