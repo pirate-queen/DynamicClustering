@@ -58,7 +58,8 @@ class MicroCluster:
 		self.tlk = tX # Update last assignment time
 		self.center = self.get_center()
 		self.variance = self.get_variance()
-		self.Classk = X_class # Update class
+		if X_class is not None and self.Classk is None:
+			self.Classk = X_class # Update class
 
 
 	# Method for all MicroClusters to be updated upon time increment
@@ -82,3 +83,10 @@ class MicroCluster:
 		self.density_type = density_type
 		if not self.was_dense and density_type == "Dense":
 			self.was_dense = True
+
+class FinalCluster:
+	def __init__(self, label, center, density, max_distance):
+		self.label = label
+		self.center = center
+		self.density = density
+		self.max_distance = max_distance
