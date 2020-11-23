@@ -1,10 +1,11 @@
 from copy import deepcopy
 from itertools import chain
 from collections import deque
+import math
 
 import numpy as np
 
-from clusters import MicroCluster
+from clusters import FinalCluster, MicroCluster
 from utilities import manhattan_distance
 
 # Citation:
@@ -40,9 +41,13 @@ class SerialDyClee:
 	#							overlap to be considered connected.
 	# @param kdtree				Set to True to enable faster connected
 	#							micro-cluster search via use of a k-d tree.
+	# @param snapshot_alpha		Alpha parameter for pyramidal snapshot
+	#							management framework.
+	# @param snapshot_l			L parameter for pyramidal snapshot framework.
 	def __init__(self, phi, forget_method=None, ltm=False,
 		unclass_accepted=True, minimum_mc=False, multi_density=False,
-		context=None, t_global=1, uncdim=0, kdtree=False):
+		context=None, t_global=1, uncdim=0, kdtree=False, snapshot_alpha=2,
+		snapshot_l=2):
 		assert phi >= 0 and phi <= 1, "Invalid phi given"
 		if phi > 0.5:
 			print("Warning: relative size (phi) > 0.5 may yield poor results")
@@ -52,6 +57,7 @@ class SerialDyClee:
 		self.forget_method = forget_method
 		self.ltm = ltm
 		self.unclass_accepted = unclass_accepted
+		self.minimum_mc = minimum_mc
 		self.density_stage = self._density_stage_local if multi_density else \
 			self._density_stage_global
 
@@ -69,6 +75,9 @@ class SerialDyClee:
 			else None # d - uncdim
 		self.spatial_search = self._search_kdtree if kdtree else \
 			self._search_all_clusters
+		self.snapshot_alpha = snapshot_alpha
+		self.snapshot_l = snapshot_l
+		self.max_snapshots = (snapshot_alpha ** snapshot_l) + 1
 
 		# Storage
 		self.A_list = [] # Active medium and high density microclusters
@@ -92,7 +101,7 @@ class SerialDyClee:
 	# Helper to calculate the current microcluster hyperbox volume.
 		# Vol = product of all sizes
 	def _get_hyperbox_volume(self):
-		return np.prod(self._get_hyperbox_sizes)
+		return np.prod(self._get_hyperbox_sizes())
 
 	def _get_next_class_id(self):
 		temp = self.next_class_id
@@ -231,22 +240,46 @@ class SerialDyClee:
 		cla = np.array([uC.Dk for uC in clist], dtype=np.float64)
 		return np.mean(cla), np.median(cla)
 
+	# Given a list of micro-clusters contributing to a final cluster, returns
+	# the label, projected center, density and max distance (a measure of
+	# spread) of the final cluster
+	def _calculate_final_cluster(self, fclist):
+		num_contrib_mc = len(fclist)
+		center = np.array((fclist[0].center.shape),
+			dtype=np.float64)
+		avg_density = 0
+		max_distance = 0
+		label = fclist[0].Classk
+
+		for uC in fclist:
+			center += uC.center
+			avg_density += uC.Dk
+
+		# Take averages and find max distance
+		center /= num_contrib_mc
+		avg_density /= num_contrib_mc
+		for uC in fclist:
+			dist = manhattan_distance(center, uC.center)
+			if dist > max_distance:
+				max_distance = dist
+
+		return label, center, avg_density, max_distance
 
 	# Implements local density analysis stage.
-	def _density_stage_local(self, ):
+	def _density_stage_local(self, tX):
 		pass
 
 
 	# Implements algorithm 2, density stage - global analysis.
 	# Returns updated A-list and O-list
-	def _density_stage_global(self):
+	def _density_stage_global(self, tX):
 		g_avg, g_med = self._get_avg_med_density(chain(self.A_list,
 			self.O_list))
 		DMC = [] # Dense
 		SDMC = [] # Semi-Dense
 		LDMC = [] # Low-Density
 		# Assign density types:
-		for uC in chain(chain(self.A_list, self.O_list)):
+		for uC in chain(self.A_list, self.O_list):
 			if uC.Dk > g_avg and uC.Dk > g_med:
 				uC.set_density_type("Dense")
 				DMC.append(uC)
@@ -266,7 +299,7 @@ class SerialDyClee:
 				if uC.Classk == 'Unclassed':
 					label = self._get_next_class_id()
 					uC.Classk = label
-				final_cluster = [copy.deepcopy(uC)] # Create "final cluster"
+				final_cluster = [uC] # Create "final cluster"
 				Connected_uC = deque(self.spatial_search(uC))
 				while len(Connected_uC) != 0:
 					uCneighbor = Connected_uC.popleft()
@@ -274,7 +307,7 @@ class SerialDyClee:
 							in already_seen:
 						uCneighbor.Classk = label
 						already_seen.add(uCneighbor)
-						final_cluster.append(copy.deepcopy(uCneighbor))
+						final_cluster.append(uCneighbor)
 						NewConnected_uC = self.spatial_search(uCneighbor)
 						for newneighbor in NewConnected_uC:
 							if newneighbor.density_type == "Dense" and \
@@ -285,24 +318,45 @@ class SerialDyClee:
 
 							if newneighbor.density_type == "Semi-Dense" and \
 									newneighbor not in already_seen:
-								final_cluster.append(copy.deepcopy(
-									newneighbor))
+								final_cluster.append(newneighbor)
 								already_seen.add(newneighbor)
-				## NEED MINIMUM_MC DECISION LOGIC HERE
-				final_clusters.append(final_cluster)
 
-		## NEED TO INSERT LOGIC FOR FINAL CLUSTERING (INCLUDING MINIMUM_MC
-		## LOGIC), SNAPSHOTS AND FILTERING ALLCLUSTERS TO RETURN THE BELOW
-		## LISTS - ASSIGNING DENSITY TYPES AND ASSIGNING TO A-LIST OR O-LIST
-		## ACCORDINGLY, "DELETING" BY NOT INCLUDING IN THE RETURNED LISTS IF A
-		## uC DOES NOT MEET THE LOW-DENSITY THRESHOLD OR MARKING FOR LONG-TERM
-		## MEMORY
-		new_A_list = list(DMC) + SDMC
-		## NEED LOW DENSITY THRESHOLD LOGIC HERE
-		new_O_list = [uC for uC in LDMC if ]
+				# Calculate and store final cluster
+				label, center, avg_density, max_distance = \
+					self._calculate_final_cluster(final_cluster)
+				final_clusters.append(FinalCluster(label, center, avg_density,
+					max_distance))
+
+		# Snapshots
+		order = math.floor(math.log(tX, self.snapshot_alpha))
+		if order not in self.snapshots:
+			self.snapshots[order] = {tX : final_clusters}
+		if len(self.snapshots[order]) > self.max_snapshots:
+			# Delete the "youngest" - i.e. the oldest from now - snapshot
+			del self.snapshots[order][list(
+				self.snapshots[order].keys()).sort()[0]]
+		for i in range(order):
+			for k in list(self.snapshots[i].keys()):
+				if k % (self.snapshot_alpha ** (i + 1)) == 0:
+					del self.snapshots[i][k]
+
+		# Return "message" of updated lists
+		new_A_list = DMC + SDMC # All current dense and semi-dense
+		new_O_list = []
+		long_term_mem_additional = []
+
+		for uC in LDMC:
+			# Check if meets low density threshold (.25 of the global density
+			# average), or was created recently (to avoid deleting new growing
+			# low-density micro-clusters), for O-list inclusion
+			if (uC.Dk > 0.25 * g_avg and uC.Dk > 0.25 * g_med) or \
+				(tX - uC.tlk) <= 10:
+				new_O_list.append(uC)
+			elif uC.was_dense: # Should be stored in long term memory
+				long_term_mem_additional.append(uC)
 
 		## Need to return dense and semi-dense as A-list, outliers as O-list
-		return new_A_list, new_O_list
+		return new_A_list, new_O_list, long_term_mem_additional
 
 
 	# Runs the DyClee algorithm on a set part of a finite dataset.
@@ -345,20 +399,23 @@ class SerialDyClee:
 			self._distance_stage(X, tX, X_class) # Run distance stage
 
 			# Decay all microclusters
-			for uC in chain(*self.all_clusters):
+			for uC in chain(self.A_list, self.O_list):
 				uC.update_cluster(tX)
 
 			# If necessary, update densities
 			if hyperboxsizes != self.hyperbox_sizes:
-				for uC in chain(*self.all_clusters):
+				for uC in chain(self.A_list, self.O_list):
 					uC.update_density(self.hyperbox_volume)
 
 			# Run density stage
 			count_since_last_density += 1
 			if count_since_last_density == self.t_global:
 				count_since_last_density = 0
-				self.density_stage()
-
+				new_A_list, new_O_list, long_term_mem_additional = \
+					self.density_stage(tX)
+				self.A_list = new_A_list
+				self.O_list = new_O_list
+				self.long_term_mem.extend(long_term_mem_additional)
 
 	# Runs the DyClee algorithm on streaming data.
 	def run_datastream(self, ):
