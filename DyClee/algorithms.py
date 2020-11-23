@@ -65,8 +65,9 @@ class SerialDyClee:
 			self.context = None
 			self.norm_func = self._adaptive_normalize_and_update
 		else: # Append max-min row for reduced calculations
-			self.context = np.append(context, (context[1] - context[0]),
-				axis=0)
+			#self.context = np.append(context, (context[1] - context[0]),
+			#	axis=0)
+			self.context = np.vstack([context, (context[1] - context[0])])
 			self.norm_func = self._normalize
 
 		self.t_global = t_global
@@ -232,6 +233,8 @@ class SerialDyClee:
 						resurrected.insert(X, tX, X_class)
 						self.O_list.append(resurrected)
 					else: # Create uC with X info
+						volume = self.hyperbox_volume if self.hyperbox_volume is not None \
+						else 1
 						self.O_list.append(MicroCluster(X, tX, volume, X_class,
 							self.forget_method))
 
