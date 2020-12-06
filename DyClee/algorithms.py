@@ -212,19 +212,22 @@ class SerialDyClee:
 			# after only one insertion.
 			volume = self.hyperbox_volume if self.hyperbox_volume is not None \
 				else 1
-			self.O_list.append(MicroCluster(X, tX, volume, X_class,
-				self.forget_method))
+			new_uC = MicroCluster(X, tX, volume, X_class, self.forget_method)
+			self.O_list.append(new_uC)
+			return new_uC
 		else: # First check A-list
 			Reachables = self._find_reachables(self.A_list, X)
 			if len(Reachables) != 0: # If there are reachable microclusters
 				best_match = self._find_best_neighbor(Reachables, X)
 				best_match.insert(X, tX, X_class)
+				return best_match
 			else: # Then check O-list
 				Reachables = self._find_reachables(self.O_list, X)
 				if len(Reachables) != 0: # If there are reachable microclusters
 					# Find closest uC in Reachables
 					best_match = self._find_best_neighbor(Reachables, X)
 					best_match.insert(X, tX, X_class)
+					return best_match
 				else: # Check long term memory
 					Reachables = self._find_reachables(self.long_term_mem, X)
 					if self.ltm and len(Reachables) != 0:
@@ -232,11 +235,14 @@ class SerialDyClee:
 						resurrected = deepcopy(best_match)
 						resurrected.insert(X, tX, X_class)
 						self.O_list.append(resurrected)
+						return resurrected
 					else: # Create uC with X info
-						volume = self.hyperbox_volume if self.hyperbox_volume is not None \
-						else 1
-						self.O_list.append(MicroCluster(X, tX, volume, X_class,
-							self.forget_method))
+						volume = self.hyperbox_volume if self.hyperbox_volume \
+							is not None else 1
+						new_uC = MicroCluster(X, tX, volume, X_class,
+							self.forget_method)
+						self.O_list.append(new_uC)
+						return new_uC
 
 	# Returns average and median density of given list of clusters.
 	def _get_avg_med_density(self, clist):
@@ -393,13 +399,16 @@ class SerialDyClee:
 			targetcol = np.array(["Unclassed"] * num_instances)
 
 		# Primary loop
+		clustering_results=[]
+		recent_results=[]
 		count_since_last_density = 0
 		for i in range(num_instances):
 			hyperboxsizes = self.hyperbox_sizes
 			X = self.norm_func(data[i]) # Normalize data
 			tX = timecol[i]
 			X_class = targetcol[i]
-			self._distance_stage(X, tX, X_class) # Run distance stage
+			# Run distance stage - append MicroCluster reference to results
+			recent_results.append(self._distance_stage(X, tX, X_class))
 
 			# Decay all microclusters
 			for uC in chain(self.A_list, self.O_list):
@@ -419,6 +428,13 @@ class SerialDyClee:
 				self.A_list = new_A_list
 				self.O_list = new_O_list
 				self.long_term_mem.extend(long_term_mem_additional)
+
+				# Convert from references to class labels
+				recent_results = [uC.Classk for uC in recent_results]
+				clustering_results.extend(recent_results)
+				recent_results = []
+
+		return clustering_results
 
 	# Runs the DyClee algorithm on streaming data.
 	def run_datastream(self, ):
