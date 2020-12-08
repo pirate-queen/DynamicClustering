@@ -67,6 +67,8 @@ class SerialDyClee:
 		else: # Append max-min row for reduced calculations
 			#self.context = np.append(context, (context[1] - context[0]),
 			#	axis=0)
+			self.min_max_features = (context-context[0])/(context[1] - context[0])
+			self.min_max_features = np.vstack([self.min_max_features, (self.min_max_features[1] - self.min_max_features[0])])
 			self.context = np.vstack([context, (context[1] - context[0])])
 			self.norm_func = self._normalize
 
@@ -100,7 +102,8 @@ class SerialDyClee:
 	# Helper to calculate microcluster hyperbox sizes along each dimension.
 	# Size = phi * |dmax - dmin|
 	def _get_hyperbox_sizes(self):
-		return self.phi * np.abs(self.context[2])
+		#return self.phi * np.abs(self.context[2])
+		return self.phi * np.abs(self.min_max_features[2])
 
 
 	# Helper to calculate the current microcluster hyperbox volume.
@@ -417,8 +420,8 @@ class SerialDyClee:
 		total_variance = np.zeros(num_features)
 		for i in range(num_instances):
 			hyperboxsizes = self.hyperbox_sizes
-			#X = self.norm_func(data[i]) # Normalize data
-			X = data[i]
+			X = self.norm_func(data[i]) # Normalize data
+			#X = data[i]
 			tX = timecol[i]
 			X_class = targetcol[i]
 
@@ -435,7 +438,7 @@ class SerialDyClee:
 				#X = X[np.argsort(X)[-self.req_features:]]
 
 			# normalize data
-			X = self.norm_func(X)
+			#X = self.norm_func(X)
 
 			# Run distance stage - append MicroCluster reference to results
 			recent_results.append(self._distance_stage(X, tX, X_class))
