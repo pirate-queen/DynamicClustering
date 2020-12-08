@@ -254,7 +254,7 @@ class SerialDyClee:
 	# spread) of the final cluster
 	def _calculate_final_cluster(self, fclist):
 		num_contrib_mc = len(fclist)
-		center = np.array((fclist[0].center.shape),
+		center = np.zeros((fclist[0].center.shape),
 			dtype=np.float64)
 		avg_density = 0
 		max_distance = 0
@@ -289,10 +289,10 @@ class SerialDyClee:
 		LDMC = [] # Low-Density
 		# Assign density types:
 		for uC in chain(self.A_list, self.O_list):
-			if uC.Dk > g_avg and uC.Dk > g_med:
+			if uC.Dk >= g_avg and uC.Dk >= g_med:
 				uC.set_density_type("Dense")
 				DMC.append(uC)
-			elif uC.Dk > g_avg or uC.Dk > g_med:
+			elif uC.Dk >= g_avg or uC.Dk >= g_med:
 				uC.set_density_type("Semi-Dense")
 				SDMC.append(uC)
 			else:
@@ -337,17 +337,17 @@ class SerialDyClee:
 					max_distance))
 
 		# Snapshots
-		order = math.floor(math.log(tX, self.snapshot_alpha))
-		if order not in self.snapshots:
-			self.snapshots[order] = {tX : final_clusters}
-		if len(self.snapshots[order]) > self.max_snapshots:
+		#order = math.floor(math.log(tX, self.snapshot_alpha))
+		#if order not in self.snapshots:
+		#	self.snapshots[order] = {tX : final_clusters}
+		#if len(self.snapshots[order]) > self.max_snapshots:
 			# Delete the "youngest" - i.e. the oldest from now - snapshot
-			del self.snapshots[order][list(
-				self.snapshots[order].keys()).sort()[0]]
-		for i in range(order):
-			for k in list(self.snapshots[i].keys()):
-				if k % (self.snapshot_alpha ** (i + 1)) == 0:
-					del self.snapshots[i][k]
+		#	del self.snapshots[order][list(
+		#		self.snapshots[order].keys()).sort()[0]]
+		#for i in range(order):
+		#	for k in list(self.snapshots[i].keys()):
+		#		if k % (self.snapshot_alpha ** (i + 1)) == 0:
+		#			del self.snapshots[i][k]
 
 		# Return "message" of updated lists
 		new_A_list = DMC + SDMC # All current dense and semi-dense
