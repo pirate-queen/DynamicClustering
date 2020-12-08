@@ -337,17 +337,24 @@ class SerialDyClee:
 					max_distance))
 
 		# Snapshots
-		#order = math.floor(math.log(tX, self.snapshot_alpha))
-		#if order not in self.snapshots:
-		#	self.snapshots[order] = {tX : final_clusters}
-		#if len(self.snapshots[order]) > self.max_snapshots:
+		if tX == 0: 
+			order = 1
+		else: 
+			order = math.floor(math.log(tX, self.snapshot_alpha))
+		if order not in self.snapshots:
+			self.snapshots[order] = {tX : final_clusters}
+		if len(self.snapshots[order]) > self.max_snapshots:
 			# Delete the "youngest" - i.e. the oldest from now - snapshot
-		#	del self.snapshots[order][list(
-		#		self.snapshots[order].keys()).sort()[0]]
-		#for i in range(order):
-		#	for k in list(self.snapshots[i].keys()):
-		#		if k % (self.snapshot_alpha ** (i + 1)) == 0:
-		#			del self.snapshots[i][k]
+			del self.snapshots[order][list(
+				self.snapshots[order].keys()).sort()[0]] 
+		for i in range(order):
+			# if key 'i' does not exist in self.snapshots[i], move to next iteration
+			try: 
+				for k in list(self.snapshots[i].keys()):
+					if k % (self.snapshot_alpha ** (i + 1)) == 0:
+						del self.snapshots[i][k]
+			except: 
+				continue 
 
 		# Return "message" of updated lists
 		new_A_list = DMC + SDMC # All current dense and semi-dense
