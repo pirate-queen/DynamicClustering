@@ -86,6 +86,10 @@ class SerialDyClee:
 		self.long_term_mem = [] # All microclusters once dense, now low density
 		self.snapshots = {} # Need to define how this is maintained
 
+		# Dimensionality reduction 
+		self.dim_red = dim_red
+		self.req_features = req_features
+
 		# Other
 		self.hyperbox_sizes = self._get_hyperbox_sizes() if context is not \
 			None else None
@@ -382,13 +386,6 @@ class SerialDyClee:
 	def warm_start(self, iterations):
 		pass
 
-	# Find the specified number of features with the highest variance 
-	# Returns indices of the highest variances in a ndarray 
-	# @param num_req_features: user specified requirement on the number of features that need to be used
-	# @param variance_list: list of all feature variances 
-	def _find_highest_variance(self, num_req_features, variance_list): 
-		return variance_list.argsort()[-num_req_features:][::-1]
-
 	# Runs the DyClee algorithm on a finite dataset.
 	# @param data		Data matrix where each row is an instance, each
 	#					column is for an attribute.
@@ -420,20 +417,25 @@ class SerialDyClee:
 		total_variance = np.zeros(num_features)
 		for i in range(num_instances):
 			hyperboxsizes = self.hyperbox_sizes
-			X = self.norm_func(data[i]) # Normalize data
+			#X = self.norm_func(data[i]) # Normalize data
+			X = data[i]
 			tX = timecol[i]
 			X_class = targetcol[i]
 
 			# Dimensionality reduction
-			if (dim_red == True):				# need to make dim_red a dyclee parameter 
+			if (self.dim_red == True):			# need to make dim_red a dyclee parameter 
 				SSi = pow(X, 2)					# square all values in data point 
 				total_SS += SSi					# add to running total of sum of squares
 												# each feature has its own total 
 				total_variance = total_SS/(i+1) # find variance of each feature 
 
-				# req_features needs to be added to dyclee parameter
-				selected_feature_list = self._find_highest_variance(req_features, total_variance)	
+				# req_features needs to be added to dyclee parameter	
+				selected_feature_list = total_variance.argsort()[-self.req_features:][::-1]
 				X = np.array([X[i] for i in selected_feature_list])
+				#X = X[np.argsort(X)[-self.req_features:]]
+
+			# normalize data
+			X = self.norm_func(X)
 
 			# Run distance stage - append MicroCluster reference to results
 			recent_results.append(self._distance_stage(X, tX, X_class))
