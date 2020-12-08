@@ -47,7 +47,7 @@ class SerialDyClee:
 	def __init__(self, phi, forget_method=None, ltm=False,
 		unclass_accepted=True, minimum_mc=False, multi_density=False,
 		context=None, t_global=1, uncdim=0, kdtree=False, snapshot_alpha=2,
-		snapshot_l=2):
+		snapshot_l=2, dim_red=False, req_features=2):
 		assert phi >= 0 and phi <= 1, "Invalid phi given"
 		if phi > 0.5:
 			print("Warning: relative size (phi) > 0.5 may yield poor results")
