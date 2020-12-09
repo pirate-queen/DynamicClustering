@@ -169,6 +169,7 @@ class SerialDyClee:
 	def _is_connected(self, microclusterA, microclusterB):
 		diff = np.abs(microclusterA.center - microclusterB.center)
 		halvedsize = self.hyperbox_sizes / 2
+		numoverlapdims = 0
 
 		# Dimensionality reduction
 		if self.var_check:
@@ -176,7 +177,7 @@ class SerialDyClee:
 				-(self.common_dims):]
 			for i in range(len(diff)):
 				if i in feature_selection:
-					if diff[i] < halvedsized:
+					if diff[i] < halvedsize[i]:
 						numoverlapdims += 1
 		else:
 			numoverlapdims = np.sum((diff < halvedsize).astype(np.uint8))
