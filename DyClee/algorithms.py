@@ -44,10 +44,14 @@ class SerialDyClee:
 	# @param snapshot_alpha		Alpha parameter for pyramidal snapshot
 	#							management framework.
 	# @param snapshot_l			L parameter for pyramidal snapshot framework.
+	# @param var_check			Use variance for deciding in which dimensions
+	#							micro-clusters must be overlap to be
+	#							considered fully connected. Will only have any
+	#							effect if uncdim != 0.
 	def __init__(self, phi, forget_method=None, ltm=False,
 		unclass_accepted=True, minimum_mc=False, multi_density=False,
 		context=None, t_global=1, uncdim=0, kdtree=False, snapshot_alpha=2,
-		snapshot_l=2, dim_red=False, req_features=2):
+		snapshot_l=2, var_check=False):
 		assert phi >= 0 and phi <= 1, "Invalid phi given"
 		if phi > 0.5:
 			print("Warning: relative size (phi) > 0.5 may yield poor results")
@@ -67,8 +71,6 @@ class SerialDyClee:
 		else: # Append max-min row for reduced calculations
 			#self.context = np.append(context, (context[1] - context[0]),
 			#	axis=0)
-			self.min_max_features = (context-context[0])/(context[1] - context[0])
-			self.min_max_features = np.vstack([self.min_max_features, (self.min_max_features[1] - self.min_max_features[0])])
 			self.context = np.vstack([context, (context[1] - context[0])])
 			self.norm_func = self._normalize
 
@@ -89,8 +91,9 @@ class SerialDyClee:
 		self.snapshots = {} # Need to define how this is maintained
 
 		# Dimensionality reduction 
-		self.dim_red = dim_red
-		self.req_features = req_features
+		self.var_check = var_check
+		self.variances = np.zeros((1, context.shape[1]),
+			dtype=np.float64) if context is not None else None
 
 		# Other
 		self.hyperbox_sizes = self._get_hyperbox_sizes() if context is not \
@@ -102,8 +105,7 @@ class SerialDyClee:
 	# Helper to calculate microcluster hyperbox sizes along each dimension.
 	# Size = phi * |dmax - dmin|
 	def _get_hyperbox_sizes(self):
-		#return self.phi * np.abs(self.context[2])
-		return self.phi * np.abs(self.min_max_features[2])
+		return self.phi * np.ones(self.context.shape[1], dtype=np.float64)
 
 
 	# Helper to calculate the current microcluster hyperbox volume.
@@ -167,7 +169,17 @@ class SerialDyClee:
 	def _is_connected(self, microclusterA, microclusterB):
 		diff = np.abs(microclusterA.center - microclusterB.center)
 		halvedsize = self.hyperbox_sizes / 2
-		numoverlapdims = np.sum((diff < halvedsize).astype(np.uint8))
+
+		# Dimensionality reduction
+		if self.var_check:
+			feature_selection = self.variances.argsort().flatten()[
+				-(self.common_dims):]
+			for i in range(len(diff)):
+				if i in feature_selection:
+					if diff[i] < halvedsized:
+						numoverlapdims += 1
+		else:
+			numoverlapdims = np.sum((diff < halvedsize).astype(np.uint8))
 		if numoverlapdims >= self.common_dims: # Check for sufficient overlap
 			return True
 		else:
@@ -188,8 +200,25 @@ class SerialDyClee:
 
 
 	# Helper function to manage final cluster snapshot history
-	def _update_snapshots(self):
-		pass
+	def _update_snapshots(self, tX, clusters):
+		if tX == 0:
+			max_order = 0
+		else:
+			max_order = math.floor(math.log(tX, self.snapshot_alpha))
+		for order in range(max_order + 1):
+			if tX % (self.snapshot_alpha ** order) == 0:
+				if order not in self.snapshots:
+					self.snapshots[order] = {tX : clusters}
+				else:
+					self.snapshots[order][tX] = clusters
+					tstamps = list(self.snapshots[order].keys())
+					tstamps.sort()
+					if len(self.snapshots[order]) > self.max_snapshots:
+						del self.snapshots[order][tstamps[0]]
+		for order in range(len(self.snapshots)):
+			for k in list(self.snapshots[order].keys()):
+				if k % (self.snapshot_alpha ** (order + 1)) == 0:
+					del self.snapshots[order][k]
 
 
 	# Helper function for finding the best neighbor microcluster for insertion
@@ -315,6 +344,8 @@ class SerialDyClee:
 				if uC.Classk == 'Unclassed':
 					label = self._get_next_class_id()
 					uC.Classk = label
+				else:
+					label = uC.Classk
 				final_cluster = [uC] # Create "final cluster"
 				Connected_uC = deque(self.spatial_search(uC))
 				while len(Connected_uC) != 0:
@@ -343,25 +374,16 @@ class SerialDyClee:
 				final_clusters.append(FinalCluster(label, center, avg_density,
 					max_distance))
 
-		# Snapshots
-		if tX == 0: 
-			order = 1
-		else: 
-			order = math.floor(math.log(tX, self.snapshot_alpha))
-		if order not in self.snapshots:
-			self.snapshots[order] = {tX : final_clusters}
-		if len(self.snapshots[order]) > self.max_snapshots:
-			# Delete the "youngest" - i.e. the oldest from now - snapshot
-			del self.snapshots[order][list(
-				self.snapshots[order].keys()).sort()[0]] 
-		for i in range(order):
-			# if key 'i' does not exist in self.snapshots[i], move to next iteration
-			try: 
-				for k in list(self.snapshots[i].keys()):
-					if k % (self.snapshot_alpha ** (i + 1)) == 0:
-						del self.snapshots[i][k]
-			except: 
-				continue 
+		# Process snapshots
+		snap_copies = []
+		if DMC is not None:
+			snap_copies.extend(deepcopy(DMC))
+		if SDMC is not None:
+			snap_copies.extend(deepcopy(SDMC))
+		if LDMC is not None:
+			snap_copies.extend(deepcopy(LDMC))
+		self._update_snapshots(tX, {'final': final_clusters,
+			'all': snap_copies})
 
 		# Return "message" of updated lists
 		new_A_list = DMC + SDMC # All current dense and semi-dense
@@ -378,7 +400,6 @@ class SerialDyClee:
 			elif uC.was_dense: # Should be stored in long term memory
 				long_term_mem_additional.append(uC)
 
-		## Need to return dense and semi-dense as A-list, outliers as O-list
 		return new_A_list, new_O_list, long_term_mem_additional
 
 
@@ -404,6 +425,7 @@ class SerialDyClee:
 		
 		if self.context is None: # Initialize context matrix
 			self.context = np.zeros((3, num_features), dtype=np.float64)
+			self.variances = np.zeros((1, num_features), dtype=np.float64)
 
 		if timecol is None: # Not time-series data
 			timecol = np.arange(num_instances)
@@ -415,30 +437,17 @@ class SerialDyClee:
 		clustering_results=[]
 		recent_results=[]
 		count_since_last_density = 0
-		SSi = 0 
-		total_SS = np.zeros(num_features)
-		total_variance = np.zeros(num_features)
+		total_SS = np.zeros(num_features, dtype=np.float64)
 		for i in range(num_instances):
 			hyperboxsizes = self.hyperbox_sizes
 			X = self.norm_func(data[i]) # Normalize data
-			#X = data[i]
 			tX = timecol[i]
 			X_class = targetcol[i]
 
-			# Dimensionality reduction
-			if (self.dim_red == True):			# need to make dim_red a dyclee parameter 
-				SSi = pow(X, 2)					# square all values in data point 
-				total_SS += SSi					# add to running total of sum of squares
-												# each feature has its own total 
-				total_variance = total_SS/(i+1) # find variance of each feature 
-
-				# req_features needs to be added to dyclee parameter	
-				selected_feature_list = total_variance.argsort()[-self.req_features:][::-1]
-				X = np.array([X[i] for i in selected_feature_list])
-				#X = X[np.argsort(X)[-self.req_features:]]
-
-			# normalize data
-			#X = self.norm_func(X)
+			# Variance calculations
+			if self.var_check:
+				total_SS += np.power(X, 2) # Update sum of squares
+				self.variances = total_SS/(i+1) # Current variances
 
 			# Run distance stage - append MicroCluster reference to results
 			recent_results.append(self._distance_stage(X, tX, X_class))
@@ -446,11 +455,12 @@ class SerialDyClee:
 			# Decay all microclusters
 			for uC in chain(self.A_list, self.O_list):
 				uC.update_cluster(tX)
+				uC.update_density(self.hyperbox_volume)
 
-			# If necessary, update densities
-			if hyperboxsizes.all() != self.hyperbox_sizes.all():
-				for uC in chain(self.A_list, self.O_list):
-					uC.update_density(self.hyperbox_volume)
+			# # If necessary, update densities
+			# if hyperboxsizes.all() != self.hyperbox_sizes.all():
+			# 	for uC in chain(self.A_list, self.O_list):
+			# 		uC.update_density(self.hyperbox_volume)
 
 			# Run density stage
 			count_since_last_density += 1
