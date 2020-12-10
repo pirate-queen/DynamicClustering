@@ -4,6 +4,7 @@ from collections import deque
 import math
 
 import numpy as np
+from sklearn.neighbors import KDTree
 
 from clusters import FinalCluster, MicroCluster
 from utilities import manhattan_distance
@@ -78,8 +79,13 @@ class SerialDyClee:
 		self.uncdim = uncdim
 		self.common_dims = context.shape[1] - uncdim if context is not None \
 			else None # d - uncdim
-		self.spatial_search = self._search_kdtree if kdtree else \
-			self._search_all_clusters
+		self.use_kdtree = kdtree
+		if kdtree:
+			self.spatial_search = self._search_kdtree
+			self.kdtree = None
+			self.center_map = None
+		else:
+			self.spatial_search = self._search_all_clusters
 		self.snapshot_alpha = snapshot_alpha
 		self.snapshot_l = snapshot_l
 		self.max_snapshots = (snapshot_alpha ** snapshot_l) + 1
@@ -194,10 +200,26 @@ class SerialDyClee:
 			self._is_connected(uC, curruC)]
 
 
+	# Helper function to construct KDTree and center map dictionary, which
+	# references microclusters based on their center.
+	def _construct_kdtree(self):
+		self.center_map = {}
+		data = []
+		for uC in chain(self.A_list, self.O_list):
+			center = uC.center
+			self.center_map[str(center)] = uC
+			data.append(center)
+		data = np.vstack(data)
+		self.kdtree = KDTree(data, metric="manhattan")
+
+
 	# Helper function to find all neighbors in the density stage by using a
 	# kdtree.
 	def _search_kdtree(self, curruC):
-		pass
+		match_indices = self.kdtree.query_radius(curruC.center,
+			self.phi / 2)[0]
+		data = self.kdtree.get_arrays()[0]
+		return [self.center_map[str(arr)] for arr in data[match_indices]]
 
 
 	# Helper function to manage final cluster snapshot history
@@ -337,6 +359,10 @@ class SerialDyClee:
 				LDMC.append(uC)
 		already_seen = set()
 		final_clusters = []
+
+		if self.use_kdtree:
+			self._construct_kdtree()
+
 		for uC in DMC:
 			if uC not in already_seen:
 				already_seen.add(uC)
