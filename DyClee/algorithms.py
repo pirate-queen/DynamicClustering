@@ -6,8 +6,8 @@ import math
 import numpy as np
 from sklearn.neighbors import KDTree
 
-from clusters import FinalCluster, MicroCluster
-from utilities import manhattan_distance
+from .clusters import FinalCluster, MicroCluster
+from .utilities import manhattan_distance
 
 # Citation:
 # Nathalie Barbosa Roa, Louise Travé-Massuyès, Victor Hugo Grisales.
