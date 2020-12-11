@@ -254,6 +254,7 @@ class SerialDyClee:
 			dist = manhattan_distance(uC.center, X)
 			if dist < min_dist:
 				closest = [uC]
+				min_dist = dist
 			elif dist == min_dist: # Ties
 				closest.append(uC)
 
