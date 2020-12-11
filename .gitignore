@@ -131,3 +131,5 @@ dmypy.json
 *.json
 *.sqlite
 DyClee/.vs/DyClee/v16/.suo
+
+.DS_Store
