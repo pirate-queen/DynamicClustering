@@ -478,7 +478,7 @@ class SerialDyClee:
 
 		# Primary loop
 		clustering_results=[]
-		recent_results=[]
+		#recent_results=[]
 		count_since_last_density = 0
 		total_SS = np.zeros(num_features, dtype=np.float64)
 		for i in range(num_instances):
@@ -493,7 +493,7 @@ class SerialDyClee:
 				self.variances = total_SS/(i+1) # Current variances
 
 			# Run distance stage - append MicroCluster reference to results
-			recent_results.append(self._distance_stage(X, tX, X_class))
+			clustering_results.append(self._distance_stage(X, tX, X_class))
 
 			# Decay all microclusters
 			for uC in chain(self.A_list, self.O_list):
@@ -516,11 +516,11 @@ class SerialDyClee:
 				self.long_term_mem.extend(long_term_mem_additional)
 
 				# Convert from references to class labels
-				recent_results = [uC.Classk for uC in recent_results]
-				clustering_results.extend(recent_results)
-				recent_results = []
+				# recent_results = [uC.Classk for uC in recent_results]
+				# clustering_results.extend(recent_results)
+				# recent_results = []
 
-		return clustering_results
+		return np.array([uC.Classk for uC in clustering_results])
 
 	# Runs the DyClee algorithm on streaming data.
 	def run_datastream(self, ):
