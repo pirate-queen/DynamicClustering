@@ -174,7 +174,7 @@ class SerialDyClee:
 	# overlap among (d - uncdim) dimensions.
 	def _is_connected(self, microclusterA, microclusterB):
 		diff = np.abs(microclusterA.center - microclusterB.center)
-		halvedsize = self.hyperbox_sizes / 2
+		halvedsize = self.hyperbox_sizes
 		numoverlapdims = 0
 
 		# Dimensionality reduction
@@ -364,7 +364,16 @@ class SerialDyClee:
 		if self.use_kdtree:
 			self._construct_kdtree()
 
+		# Organize dense clusters so as to prioritize classed dense clusters as
+		# seeds first to avoid unnecessary label generation and re-labeling
+		dense = []
 		for uC in DMC:
+			if uC.Classk != 'Unclassed':
+				dense.insert(0, uC)
+			else:
+				dense.append(uC)
+
+		for uC in dense:
 			if uC not in already_seen:
 				already_seen.add(uC)
 				## May need to change this to class assignment upon final
@@ -376,25 +385,29 @@ class SerialDyClee:
 					label = uC.Classk
 				final_cluster = [uC] # Create "final cluster"
 				Connected_uC = deque(self.spatial_search(uC))
+				## Note that outliers connected to seeds will not be labeled
 				while len(Connected_uC) != 0:
 					uCneighbor = Connected_uC.popleft()
-					if uCneighbor.density_type == "Dense" and uCneighbor not \
-							in already_seen:
+					if (uCneighbor.density_type == "Dense" or \
+						uCneighbor.density_type == "Semi-Dense") and \
+						uCneighbor not in already_seen:
 						uCneighbor.Classk = label
 						already_seen.add(uCneighbor)
 						final_cluster.append(uCneighbor)
 						NewConnected_uC = self.spatial_search(uCneighbor)
 						for newneighbor in NewConnected_uC:
-							if newneighbor.density_type == "Dense" and \
+							if (newneighbor.density_type == "Dense" or \
+								newneighbor.density_type == "Semi-Dense") and \
 									newneighbor not in already_seen:
 								Connected_uC.append(newneighbor)
-
+							# Connected_uC.append(newneighbor)
 							newneighbor.Classk = label
 
-							if newneighbor.density_type == "Semi-Dense" and \
-									newneighbor not in already_seen:
-								final_cluster.append(newneighbor)
-								already_seen.add(newneighbor)
+							# if newneighbor.density_type == "Semi-Dense" and \
+							# 		newneighbor not in already_seen:
+							# 	final_cluster.append(newneighbor)
+							# 	Connected_uC.append(newneighbor)
+							# 	already_seen.add(newneighbor)
 
 				# Calculate and store final cluster
 				label, center, avg_density, max_distance = \
@@ -415,18 +428,20 @@ class SerialDyClee:
 
 		# Return "message" of updated lists
 		new_A_list = DMC + SDMC # All current dense and semi-dense
-		new_O_list = []
 		long_term_mem_additional = []
 
-		for uC in LDMC:
-			# Check if meets low density threshold (.25 of the global density
-			# average), or was created recently (to avoid deleting new growing
-			# low-density micro-clusters), for O-list inclusion
-			if (uC.Dk > 0.25 * g_avg and uC.Dk > 0.25 * g_med) or \
-				(tX - uC.tlk) <= 10:
-				new_O_list.append(uC)
-			elif uC.was_dense: # Should be stored in long term memory
-				long_term_mem_additional.append(uC)
+		if self.forget_method is None: # No forgetting process
+			new_O_list = LDMC
+		else:
+			for uC in LDMC:
+				# Check if meets low density threshold (.25 of the global
+				# density average), or was created recently (to avoid deleting
+				# new growing low-density micro-clusters), for O-list inclusion
+				if (uC.Dk > 0.25 * g_avg and uC.Dk > 0.25 * g_med) or \
+					(tX - uC.tlk) <= 10:
+					new_O_list.append(uC)
+				elif uC.was_dense and self.ltm: # Store in long term memory
+					long_term_mem_additional.append(uC)
 
 		return new_A_list, new_O_list, long_term_mem_additional
 
