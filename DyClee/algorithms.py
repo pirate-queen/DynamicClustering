@@ -338,42 +338,47 @@ class SerialDyClee:
 	def _density_stage_local(self, tX):
 		pass
 
+	# Performs density analysis on a given list of MicroClusters.
+	# @param	uClist	A list of MicroClusters to analyze.
+	# @param	d_avg	The average density of the MicroClusters.
+	# @param 	d_med	The median density of the MicroClusters.
+	# @return			Returns lists of the Dense, Semi-Dense and Low-Density
+	#					MicroClusters.
+	def _density_analysis(self, uClist, d_avg, d_med):
+		DMC, SDMC, LDMC = [],[],[] # Dense, Semi-Dense, Low-Density
+		for uC in uClist:
+			if uC.Dk >= d_avg and uC.Dk >= d_med:
+				uC.set_density_type("Dense")
+				# Organize dense clusters so as to prioritize classed dense
+				# clusters as seeds first to avoid unnecessary label
+				# generation and re-labeling
+				if uC.Classk != 'Unclassed':
+					DMC.insert(0, uC)
+				else:
+					DMC.append(uC)
+			elif uC.Dk >= d_avg or uC.Dk >= d_med:
+				uC.set_density_type("Semi-Dense")
+				SDMC.append(uC)
+			else:
+				uC.set_density_type("Low-Density")
+				LDMC.append(uC)
+
+		return DMC, SDMC, LDMC
 
 	# Implements algorithm 2, density stage - global analysis.
 	# Returns updated A-list and O-list
 	def _density_stage_global(self, tX):
 		g_avg, g_med = self._get_avg_med_density(chain(self.A_list,
 			self.O_list))
-		DMC = [] # Dense
-		SDMC = [] # Semi-Dense
-		LDMC = [] # Low-Density
-		# Assign density types:
-		for uC in chain(self.A_list, self.O_list):
-			if uC.Dk >= g_avg and uC.Dk >= g_med:
-				uC.set_density_type("Dense")
-				DMC.append(uC)
-			elif uC.Dk >= g_avg or uC.Dk >= g_med:
-				uC.set_density_type("Semi-Dense")
-				SDMC.append(uC)
-			else:
-				uC.set_density_type("Low-Density")
-				LDMC.append(uC)
+		DMC, SDMC, LDMC = self._density_analysis(chain(self.A_list,
+			self.O_list), g_avg, g_med)
 		already_seen = set()
 		final_clusters = []
 
 		if self.use_kdtree:
 			self._construct_kdtree()
 
-		# Organize dense clusters so as to prioritize classed dense clusters as
-		# seeds first to avoid unnecessary label generation and re-labeling
-		dense = []
 		for uC in DMC:
-			if uC.Classk != 'Unclassed':
-				dense.insert(0, uC)
-			else:
-				dense.append(uC)
-
-		for uC in dense:
 			if uC not in already_seen:
 				already_seen.add(uC)
 				## May need to change this to class assignment upon final
