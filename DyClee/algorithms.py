@@ -2,6 +2,7 @@ from copy import deepcopy
 from itertools import chain
 from collections import deque
 import math
+from statistics import multimode
 
 import numpy as np
 from sklearn.neighbors import KDTree
@@ -49,10 +50,14 @@ class SerialDyClee:
 	#							micro-clusters must be overlap to be
 	#							considered fully connected. Will only have any
 	#							effect if uncdim != 0.
+	# @param dense_connect		Only allow connectivity by dense microclusters.
+	# @param label_voting		Use mode with voting for tie breaking for
+	#							label propagation.
 	def __init__(self, phi, forget_method=None, ltm=False,
 		unclass_accepted=True, minimum_mc=False, multi_density=False,
 		context=None, t_global=1, uncdim=0, kdtree=False, snapshot_alpha=2,
-		snapshot_l=2, var_check=False):
+		snapshot_l=2, var_check=False, dense_connect=False,
+		label_voting=False):
 		assert phi >= 0 and phi <= 1, "Invalid phi given"
 		if phi > 0.5:
 			print("Warning: relative size (phi) > 0.5 may yield poor results")
@@ -101,6 +106,10 @@ class SerialDyClee:
 		self.variances = np.zeros((1, context.shape[1]),
 			dtype=np.float64) if context is not None else None
 
+		self.density_check = self._is_dense if dense_connect else \
+			self._is_not_outlier
+		self.label_voting = label_voting
+
 		# Other
 		self.hyperbox_sizes = self._get_hyperbox_sizes() if context is not \
 			None else None
@@ -119,10 +128,20 @@ class SerialDyClee:
 	def _get_hyperbox_volume(self):
 		return np.prod(self._get_hyperbox_sizes())
 
+
 	def _get_next_class_id(self):
 		temp = self.next_class_id
 		self.next_class_id += 1
 		return temp
+
+
+	def _is_dense(self, uC):
+		return uC.density_type == "Dense"
+
+
+	def _is_not_outlier(self, uC):
+		return uC.density_type != "Outlier"
+
 
 	# Normalization function for use in cases of no context matrix provided;
 	# also, must update the hypervolumes of all microclusters.
@@ -390,35 +409,83 @@ class SerialDyClee:
 					label = uC.Classk
 				final_cluster = [uC] # Create "final cluster"
 				Connected_uC = deque(self.spatial_search(uC))
-				## Note that outliers connected to seeds will not be labeled
-				while len(Connected_uC) != 0:
-					uCneighbor = Connected_uC.popleft()
-					if (uCneighbor.density_type == "Dense" or \
-						uCneighbor.density_type == "Semi-Dense") and \
-						uCneighbor not in already_seen:
-						uCneighbor.Classk = label
-						already_seen.add(uCneighbor)
-						final_cluster.append(uCneighbor)
-						NewConnected_uC = self.spatial_search(uCneighbor)
-						for newneighbor in NewConnected_uC:
-							if (newneighbor.density_type == "Dense" or \
-								newneighbor.density_type == "Semi-Dense") and \
+
+				# Optional voting behavior
+				if self.label_voting:
+					labels = [label]
+					classed = [uC]
+					outliers = []
+					while len(Connected_uC) != 0:
+						uCneighbor = Connected_uC.popleft()
+						if self._is_not_outlier(uCneighbor) and \
+							uCneighbor not in already_seen:
+							curr_class = uCneighbor.Classk
+							if curr_class != "Unclassed":
+								labels.append(curr_class)
+								classed.append(uCneighbor)
+							already_seen.add(uCneighbor)
+							final_cluster.append(uCneighbor)
+							NewConnected_uC = self.spatial_search(uCneighbor)
+							for newneighbor in NewConnected_uC:
+								if self._is_not_outlier(uCneighbor) and \
 									newneighbor not in already_seen:
-								Connected_uC.append(newneighbor)
-							# Connected_uC.append(newneighbor)
-							newneighbor.Classk = label
+									Connected_uC.append(newneighbor)
+									curr_class = newneighbor.Classk
+									if curr_class != "Unclassed":
+										labels.append(newneighbor.Classk)
+										classed.append(newneighbor)
+								elif newneighbor not in already_seen:
+									outliers.append(newneighbor)
+									already_seen.add(newneighbor)
 
-							# if newneighbor.density_type == "Semi-Dense" and \
-							# 		newneighbor not in already_seen:
-							# 	final_cluster.append(newneighbor)
-							# 	Connected_uC.append(newneighbor)
-							# 	already_seen.add(newneighbor)
+					_, center, avg_density, max_distance = \
+						self._calculate_final_cluster(final_cluster)
 
-				# Calculate and store final cluster
-				label, center, avg_density, max_distance = \
-					self._calculate_final_cluster(final_cluster)
-				final_clusters.append(FinalCluster(label, center, avg_density,
-					max_distance))
+					# Label voting
+					final_label = multimode(labels)
+					if len(final_label) == 1:
+						final_label = final_label[0] # Extract single mode
+					elif len(final_label) == len(final_cluster):
+						final_label = label
+					else: # Multiple modes
+						votes = {k : 0 for k in labels}
+						for uC in classed:
+							curr_class = uC.Classk
+							if curr_class in votes:
+								# Votes are weighted by uC density and its distance
+								# from the final cluster center
+								votes[curr_class] += (uC.Dk * (1 /
+									manhattan_distance(uC.center, center)))
+						final_label = max(votes, lambda x : votes[x])
+
+					# Apply labels
+					for uC in chain(outliers, final_cluster):
+						uC.Classk = final_label
+
+					final_clusters.append(FinalCluster(final_label, center,
+						avg_density, max_distance))
+
+				# Default behavior
+				else:
+					while len(Connected_uC) != 0:
+						uCneighbor = Connected_uC.popleft()
+						if self.density_check(uCneighbor) and \
+							uCneighbor not in already_seen:
+							uCneighbor.Classk = label
+							already_seen.add(uCneighbor)
+							final_cluster.append(uCneighbor)
+							NewConnected_uC = self.spatial_search(uCneighbor)
+							for newneighbor in NewConnected_uC:
+								if self.density_check(newneighbor) and \
+									newneighbor not in already_seen:
+									Connected_uC.append(newneighbor)
+								newneighbor.Classk = label
+
+					# Calculate and store final cluster
+					label, center, avg_density, max_distance = \
+						self._calculate_final_cluster(final_cluster)
+					final_clusters.append(FinalCluster(label, center,
+						avg_density, max_distance))
 
 		# Process snapshots
 		snap_copies = []
