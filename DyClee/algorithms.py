@@ -453,6 +453,28 @@ class SerialDyClee:
 	def warm_start(self, iterations):
 		pass
 
+
+	# Initializes parameters and returns a time column, target column and
+	# a sum of squares vector.
+	def _initialize(self, num_instances, num_features, timecol, targetcol):
+		if self.common_dims is None: # Initialize common dimensions
+			self.common_dims = num_features - self.uncdim
+
+		if self.context is None: # Initialize context matrix
+			self.context = np.zeros((3, num_features), dtype=np.float64)
+			self.variances = np.zeros((1, num_features), dtype=np.float64)
+
+		# Indices if not time-series data
+		tcol = np.arange(num_instances) if timecol is None else timecol
+
+		# All Unclassed if unsupervised
+		tgcol = np.array(["Unclassed"] * num_instances) if targetcol is None \
+			else targetcol
+
+		ssq = np.zeros(num_features, dtype=np.float64)
+
+		return tcol, tgcol, ssq
+
 	# Runs the DyClee algorithm on a finite dataset.
 	# @param data		Data matrix where each row is an instance, each
 	#					column is for an attribute.
@@ -461,28 +483,19 @@ class SerialDyClee:
 	#					be None.
 	# @param targetcol	Column of labels. Absence of a label MUST be indicated
 	#					with None in that row.
+	# @return			Returns an array of labels corresponding to the input
+	#					instances (in their input order). For a given point
+	#					this is the last label the microcluster into which it
+	#					was inserted took on.
 	def run_dataset(self, data, timecol=None, targetcol=None):
 		num_instances, num_features = data.shape
-		if self.common_dims is None: # Initialize common dimensions
-			self.common_dims = num_features - self.uncdim
-		
-		if self.context is None: # Initialize context matrix
-			self.context = np.zeros((3, num_features), dtype=np.float64)
-			self.variances = np.zeros((1, num_features), dtype=np.float64)
-
-		if timecol is None: # Not time-series data
-			timecol = np.arange(num_instances)
-
-		if targetcol is None: # Unsupervised
-			targetcol = np.array(["Unclassed"] * num_instances)
+		timecol, targetcol, total_SS = self._initialize(num_instances,
+			num_features, timecol, targetcol)
 
 		# Primary loop
 		clustering_results=[]
-		#recent_results=[]
 		count_since_last_density = 0
-		total_SS = np.zeros(num_features, dtype=np.float64)
 		for i in range(num_instances):
-			hyperboxsizes = self.hyperbox_sizes
 			X = self.norm_func(data[i]) # Normalize data
 			tX = timecol[i]
 			X_class = targetcol[i]
@@ -500,25 +513,14 @@ class SerialDyClee:
 				uC.update_cluster(tX)
 				uC.update_density(self.hyperbox_volume)
 
-			# # If necessary, update densities
-			# if hyperboxsizes.all() != self.hyperbox_sizes.all():
-			# 	for uC in chain(self.A_list, self.O_list):
-			# 		uC.update_density(self.hyperbox_volume)
-
 			# Run density stage
 			count_since_last_density += 1
 			if count_since_last_density == self.t_global:
 				count_since_last_density = 0
-				new_A_list, new_O_list, long_term_mem_additional = \
-					self.density_stage(tX)
-				self.A_list = new_A_list
-				self.O_list = new_O_list
+				new_A, new_O, long_term_mem_additional = self.density_stage(tX)
+				self.A_list = new_A
+				self.O_list = new_O
 				self.long_term_mem.extend(long_term_mem_additional)
-
-				# Convert from references to class labels
-				# recent_results = [uC.Classk for uC in recent_results]
-				# clustering_results.extend(recent_results)
-				# recent_results = []
 
 		return np.array([uC.Classk for uC in clustering_results])
 
