@@ -116,8 +116,8 @@ class SerialDyClee:
 		self.hyperbox_volume = self._get_hyperbox_volume() if context is not \
 			None else None
 
-		self.id_prefix = "dyclee" + str(np.random.Generator.integers(1000)) \
-			+ "_"
+		self.id_prefix = "dyclee" + str(np.random.default_rng().integers(
+			1000)) + "_"
 		self.next_class_id = 0
 
 	# Helper to calculate microcluster hyperbox sizes along each dimension.
