@@ -1,4 +1,5 @@
 # Contains functions used for visualizations and analysis.
+import numpy as np
 
 # Function to return Xmin and ymin for rectangle parameters
 def hyperbox_coordinates(uC, sizes):
@@ -17,3 +18,10 @@ def unpack_snapshots(snapshots):
 		for timestamp, cluster_lists in timestamps.items(): 
 			snapshots_ordered[timestamp] = cluster_lists
 	return sorted(snapshots_ordered), snapshots_ordered
+
+
+# Function for stripping the interal DyClee generated label prefix from labels.
+# Useful for shortening labels in an unsupervised learning scenario.
+def strip_labels(labels):
+	return np.array([label.split("_")[1] if label != "Unclassed" else label \
+		for label in labels])
