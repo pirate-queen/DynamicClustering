@@ -44,23 +44,25 @@ def plot_snapshots(timestamp_order, snapshots_ordered, display_class=False):
 		micro_list = snapshots_ordered[t]['all']
 
 		# plot final cluster
-		final_df = pd.DataFrame([np.append(uC.center, [uC.label], 0) for uC in final_list], columns=['x', 'y', 'class'])
-		f_plot = sns.scatterplot(ax=axes[i][0], x='x',y='y',hue='class',data=final_df)
+		final_df = pd.DataFrame([uC.center for uC in final_list], columns=['x', 'y'])
+		final_class = np.array([uC.label for uC in final_list])
+		f_plot = sns.scatterplot(ax=axes[i][0], x='x',y='y',hue=final_class,data=final_df)
 		f_plot.legend(loc='lower left', bbox_to_anchor=(1.05,0), ncol=1)
 
 		if (display_class): 
 			for line in range(0,final_df.shape[0]): 
-				f_plot.text(final_df['x'][line], final_df['y'][line], final_df['class'][line], horizontalalignment='left', size='medium', color='black', weight='normal')
+				f_plot.text(final_df['x'][line], final_df['y'][line], final_class[line], horizontalalignment='left', size='medium', color='black', weight='normal')
 		axes[i][0].set_ylabel(t, rotation=0, size='xx-large', weight='bold')
 		
 		# plot micro clusters 
-		micro_df = pd.DataFrame([np.append(uC.get_center(), [uC.Classk], 0) for uC in micro_list], columns=['x', 'y', 'class'])
-		m_plot = sns.scatterplot(ax=axes[i][1], x='x',y='y',hue='class',data=micro_df)
+		micro_df = pd.DataFrame([uC.get_center() for uC in micro_list], columns=['x', 'y'])
+		micro_class = np.array([uC.Classk for uC in micro_list])
+		m_plot = sns.scatterplot(ax=axes[i][1], x='x',y='y',hue=micro_class,data=micro_df)
 		m_plot.legend(loc='lower left', bbox_to_anchor=(1.05,0), ncol=1)
 		if (display_class): 
 			for line in range(0,micro_df.shape[0]): 
-				if micro_df['class'][line] != 'Unclassed': 
-					m_plot.text(micro_df['x'][line], micro_df['y'][line], micro_df['class'][line], horizontalalignment='left', size='medium', color='black', weight='normal')
+				if micro_class[line] != 'Unclassed': 
+					m_plot.text(micro_df['x'][line], micro_df['y'][line], micro_class[line], horizontalalignment='left', size='medium', color='black', weight='normal')
 
 	fig.tight_layout
 
