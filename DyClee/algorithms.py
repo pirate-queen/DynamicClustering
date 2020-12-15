@@ -547,6 +547,47 @@ class SerialDyClee:
 
 		return tcol, tgcol, ssq
 
+
+	# Runs the DyClee algorithm on a finite dataset using episode abstraction.
+	def run_dataset_w_abstraction(self, data, timecol=None, targetcol=None,
+		max_window=None):
+		num_instances, num_features = data.shape
+		timecol, targetcol, total_SS = self._initialize(num_instances,
+			num_features, timecol, targetcol)
+		mw = math.floor(num_instances/2) if max_window is None else max_window
+
+		# Primary loop
+		clustering_results=[]
+		count_since_last_density = 0
+		complete = False
+		current_loc = 0
+		while not complete:
+			# Find suitable window to fit polynomial of degree 2
+			curr_window_length = mw
+			while curr_window_length > 1:
+				current_bound = current_loc + curr_window_length
+				totalvar = np.sum(np.var(
+					data[current_loc:current_bound], axis=0))
+				coefs, residuals, rank, singular_values, rcond = np.polyfit(
+					timecol[current_loc:current_bound],
+					data[current_loc:current_bound], 2, full=True)
+				totalres = np.sum(residuals)
+				if totalres > totalvar:
+					curr_window_length = math.floor(curr_window_length / 2)
+				else:
+					break
+
+			# Insert coefficients as instance
+			coefs, residuals, rank, singular_values, rcond = np.polyfit(
+					timecol[current_loc:current_bound],
+					data[current_loc:current_bound], 2, full=True)
+
+			#inserteduC = self._distance_stage(, tX, X_class)
+
+			# UPDATE current_loc
+
+
+
 	# Runs the DyClee algorithm on a finite dataset.
 	# @param data		Data matrix where each row is an instance, each
 	#					column is for an attribute.
