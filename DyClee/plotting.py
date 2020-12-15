@@ -9,6 +9,7 @@ from copy import deepcopy
 from sklearn.preprocessing import StandardScaler
 
 # Contains functions used for visualizations and analysis.
+import numpy as np
 
 # Function to return Xmin and ymin for rectangle parameters
 def hyperbox_coordinates(uC, sizes):
@@ -123,3 +124,10 @@ def test_dyclee_datasets(datasets, dyclee):
 		sns.scatterplot(ax=ax[i][1], x='x',y='y',hue=output_y,data=cluster_df,palette='bright').legend(loc='lower left', bbox_to_anchor=(1.05,0), ncol=1)
 
 	fig.tight_layout()
+
+# Function for stripping the interal DyClee generated label prefix from labels.
+# Useful for shortening labels in an unsupervised learning scenario.
+def strip_labels(labels):
+	return np.array([label.split("_")[1] if label != "Unclassed" else label \
+		for label in labels])
+

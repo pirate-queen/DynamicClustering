@@ -115,6 +115,9 @@ class SerialDyClee:
 			None else None
 		self.hyperbox_volume = self._get_hyperbox_volume() if context is not \
 			None else None
+
+		self.id_prefix = "dyclee" + str(np.random.default_rng().integers(
+			1000)) + "_"
 		self.next_class_id = 0
 
 	# Helper to calculate microcluster hyperbox sizes along each dimension.
@@ -130,7 +133,7 @@ class SerialDyClee:
 
 
 	def _get_next_class_id(self):
-		temp = self.next_class_id
+		temp = self.id_prefix + str(self.next_class_id)
 		self.next_class_id += 1
 		return temp
 
@@ -413,6 +416,7 @@ class SerialDyClee:
 				# Optional voting behavior
 				if self.label_voting:
 					labels = [label]
+					final_label = None
 					classed = [uC]
 					outliers = []
 					while len(Connected_uC) != 0:
@@ -423,6 +427,8 @@ class SerialDyClee:
 							if curr_class != "Unclassed":
 								labels.append(curr_class)
 								classed.append(uCneighbor)
+								if not curr_class.startswith(self.id_prefix):
+									final_label = curr_class
 							already_seen.add(uCneighbor)
 							final_cluster.append(uCneighbor)
 							NewConnected_uC = self.spatial_search(uCneighbor)
@@ -434,6 +440,9 @@ class SerialDyClee:
 									if curr_class != "Unclassed":
 										labels.append(newneighbor.Classk)
 										classed.append(newneighbor)
+										if not curr_class.startswith(
+											self.id_prefix):
+											final_label = curr_class
 								elif newneighbor not in already_seen:
 									outliers.append(newneighbor)
 									already_seen.add(newneighbor)
@@ -442,21 +451,22 @@ class SerialDyClee:
 						self._calculate_final_cluster(final_cluster)
 
 					# Label voting
-					final_label = multimode(labels)
-					if len(final_label) == 1:
-						final_label = final_label[0] # Extract single mode
-					elif len(final_label) == len(final_cluster):
-						final_label = label
-					else: # Multiple modes
-						votes = {k : 0 for k in labels}
-						for uC in classed:
-							curr_class = uC.Classk
-							if curr_class in votes:
-								# Votes are weighted by uC density and its distance
-								# from the final cluster center
-								votes[curr_class] += (uC.Dk * (1 /
-									manhattan_distance(uC.center, center)))
-						final_label = max(votes, lambda x : votes[x])
+					if final_label is None:
+						final_label = multimode(labels)
+						if len(final_label) == 1:
+							final_label = final_label[0] # Extract single mode
+						elif len(final_label) == len(final_cluster):
+							final_label = label
+						else: # Multiple modes
+							votes = {k : 0 for k in labels}
+							for uC in classed:
+								curr_class = uC.Classk
+								if curr_class in votes:
+									# Votes are weighted by uC density and its
+									# distance from the final cluster center
+									votes[curr_class] += (uC.Dk * (1 /
+										manhattan_distance(uC.center, center)))
+							final_label = max(votes, key=lambda x : votes[x])
 
 					# Apply labels
 					for uC in chain(outliers, final_cluster):
